@@ -1,8 +1,8 @@
 #!/bin/bash
 # ci-status-report.sh -- Check ROSA CI job health and output a summary.
 #
-# Reads job definitions from configs/ci-status-jobs.yaml, queries Prow GCS
-# for the latest result of each job, and prints a report with per-category
+# Reads job definitions from configs/ci-status-jobs.yaml, queries Prow
+# job-history for the latest result of each job, and prints a report with per-category
 # pass rates to stdout (captured as the Prow build log). Prow's
 # slack_reporter posts to Slack based on exit code; the "Full report"
 # link in Slack points to this build log.
@@ -14,7 +14,6 @@ set -euo pipefail
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 readonly JOBS_CONFIG="${REPO_ROOT}/configs/ci-status-jobs.yaml"
-readonly GCS_BASE="https://storage.googleapis.com/test-platform-results"
 readonly PROW_BASE="https://prow.ci.openshift.org/view/gs/test-platform-results"
 
 if [[ ! -f "${JOBS_CONFIG}" ]]; then
@@ -93,64 +92,64 @@ print(f'META|sippy_url|{sippy_url}')
 " < "${JOBS_CONFIG}"
 }
 
-get_latest_build() {
-  curl -sf --max-time 10 "${GCS_BASE}/logs/${1}/latest-build.txt" 2>/dev/null || true
-}
-
-get_build_result() {
-  local json
-  json=$(curl -sf --max-time 10 "${GCS_BASE}/logs/${1}/${2}/finished.json" 2>/dev/null) || true
-  if [[ -n "${json}" ]]; then
-    python3 -c "import json,sys; print(json.loads(sys.stdin.read()).get('result',''))" <<< "${json}" 2>/dev/null || true
-  fi
-}
-
-get_last_completed() {
+get_job_status() {
   local job_name="$1"
+  local raw
+  raw=$(curl -sf --max-time 15 \
+    "https://prow.ci.openshift.org/job-history/gs/test-platform-results/logs/${job_name}" 2>/dev/null) || true
+
+  if [[ -z "${raw}" ]]; then
+    echo "|NO_DATA"
+    return
+  fi
+
   python3 -c "
-import json, sys, urllib.request
-url = 'https://prow.ci.openshift.org/prowjobs.js?omit=annotations,labels,decoration_config,pod_spec&job=${job_name}'
-try:
-    with urllib.request.urlopen(url, timeout=15) as resp:
-        data = json.loads(resp.read())
-    completed = [i for i in data.get('items', [])
-                 if i['status'].get('state') in ('success', 'failure', 'aborted', 'error')]
-    completed.sort(key=lambda x: x['status'].get('startTime', ''), reverse=True)
+import sys, re, json
+html = sys.stdin.read()
+match = re.search(r'var allBuilds = (\[.+?\]);', html, re.DOTALL)
+if not match:
+    print('|NO_DATA')
+    sys.exit(0)
+builds = json.loads(match.group(1))
+if not builds:
+    print('|NO_DATA')
+    sys.exit(0)
+
+# Check if latest is still running
+latest = builds[0]
+if latest.get('Result') == 'PENDING':
+    # Find most recent completed build for result
+    completed = [b for b in builds if b.get('Result','') != 'PENDING']
     if completed:
-        item = completed[0]
-        bid = item['status'].get('build_id', '')
-        state = item['status']['state']
-        result = 'SUCCESS' if state == 'success' else 'FAILURE'
-        print(f'{bid}|{result}')
-except Exception:
-    pass
-" 2>/dev/null || true
+        b = completed[0]
+        result = 'SUCCESS' if b.get('Result') == 'SUCCESS' else 'FAILURE'
+        print(f\"{b.get('ID', '')}|{result}\")
+    else:
+        print(f\"{latest.get('ID', '')}|RUNNING\")
+else:
+    result = 'SUCCESS' if latest.get('Result') == 'SUCCESS' else 'FAILURE'
+    print(f\"{latest.get('ID', '')}|{result}\")
+" <<< "${raw}" 2>/dev/null || echo "|NO_DATA"
 }
 
 check_job() {
   local category="$1" display_name="$2" job_name="$3"
-  local build_id result
+  local status_line build_id result
 
-  build_id=$(get_latest_build "${job_name}")
-  if [[ -z "${build_id}" ]]; then
-    echo >&2 "WARN: No latest-build.txt for ${job_name}"
+  status_line=$(get_job_status "${job_name}")
+  build_id="${status_line%%|*}"
+  result="${status_line##*|}"
+
+  if [[ "${result}" == "NO_DATA" ]] || [[ -z "${result}" ]]; then
     echo "${category}|${display_name}|NO_DATA||"
     return
   fi
 
-  result=$(get_build_result "${job_name}" "${build_id}")
-
-  if [[ -z "${result}" ]]; then
-    local fallback
-    fallback=$(get_last_completed "${job_name}")
-    if [[ -n "${fallback}" ]]; then
-      build_id="${fallback%%|*}"
-      result="${fallback##*|}"
-      echo >&2 "INFO: ${display_name} latest build running, using previous: ${result}"
-    fi
+  if [[ -n "${build_id}" ]]; then
+    echo "${category}|${display_name}|${result}|${PROW_BASE}/logs/${job_name}/${build_id}|${job_name}"
+  else
+    echo "${category}|${display_name}|${result}||${job_name}"
   fi
-
-  echo "${category}|${display_name}|${result:-RUNNING}|${PROW_BASE}/logs/${job_name}/${build_id}|${job_name}"
 }
 
 log_indicator() {
