@@ -12,6 +12,7 @@ Every week, check the SRE operators listed in the Operator Registry below for pe
 - **Use `make boilerplate-commit`** — do not craft commit messages or branch names manually. The `boilerplate-commit` make target generates the standard commit message, branch name, and title automatically.
 - **Do not modify any files manually** — only `make boilerplate-update` should modify files. Do not edit boilerplate output.
 - **Clean checkout required** — `make boilerplate-update` requires a clean git working tree. Always start from a fresh clone on the default branch.
+- **Threading via delimiter** — The report must be split into a parent summary and a threaded reply with per-operator details using the `---THREAD_DETAILS---` delimiter. The parent message must NOT contain per-operator results.
 
 ## Operator Registry
 
@@ -115,15 +116,26 @@ Use `<!subteam^S0BLN6AN7EK>` to mention the @osd-operators-saas-approver group.
 
 Include the "Stale PRs superseded" line only if the count is greater than 0.
 
+Do NOT include per-operator results in this message — those go exclusively after the `---THREAD_DETAILS---` delimiter.
+
 #### Threaded reply (per-operator details)
 
-Post a **single** threaded reply to the parent message containing all per-operator results collected during processing:
+After the parent summary, include the per-operator details as a threaded reply using the delimiter-based threading system. Put `---THREAD_DETAILS---` after the parent summary to separate it from the per-operator results. Everything goes in a **single** `set_response_element` call — the platform splits on the delimiter automatically. Do NOT use separate `set_response_element` calls for the summary and thread.
 
-> ✅ **operator-a** — Boilerplate updated. PR: <link>
-> ✅ **operator-b** — Boilerplate updated. PR: <link> (supersedes stale PR: <old link>)
-> ⏭️ **operator-c** — Boilerplate already up to date.
-> ⏭️ **operator-d** — Recent boilerplate update PR already open (<7 days): <link>
-> ❌ **operator-e** — `make boilerplate-update` failed: <error summary>
+**Validation gate:** Before calling `send_response()`, verify your response content contains `---THREAD_DETAILS---`. If the delimiter is missing, the per-operator details will not be posted as a threaded reply — go back and add it.
+
+Example structure:
+
+```
+{parent summary content}
+
+---THREAD_DETAILS---
+
+*Per-operator results:*
+✅ **operator-a** — Boilerplate updated. PR: <link>
+⏭️ **operator-b** — Recent PR already open: <link>
+❌ **operator-c** — `make boilerplate-update` failed: <error>
+```
 
 List operators in the order they were processed.
 
