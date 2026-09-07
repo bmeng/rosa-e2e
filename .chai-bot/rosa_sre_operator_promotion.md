@@ -22,7 +22,7 @@ The stage target's `ref` represents the latest sha that has passed through the e
 ## Important Rules
 
 - **ALWAYS produce a Slack report** — even if no operators need promotion, post a summary message.
-- **One threaded reply per operator** — each operator's details MUST be posted as its own separate threaded reply to the parent message. NEVER batch multiple operators into the parent message or into a single reply. The parent message contains ONLY the header and summary statistics.
+- **One threaded reply per operator** — each operator's details MUST be posted as its own separate threaded reply using `---THREAD_BREAK---` delimiters between operators. NEVER batch multiple operators into the parent message or into a single reply. The parent message contains ONLY the header and summary statistics, separated from threaded replies by `---THREAD_DETAILS---`.
 - **One MR per operator** — each operator gets its own MR (not batched). This allows independent review and rollback.
 - **Only modify the `ref` field** in prod-canary targets. Never change namespace refs, parameters, promotion subscriptions, or any other field.
 - **Only promote a sha that has progressed through all pipeline stages** (integration → stage). The stage target ref in the saas file represents the latest validated sha.
@@ -71,9 +71,9 @@ Complete ALL operator processing (steps 2–4) first, collecting results for eve
 
 ### Delivery Order
 
-After all operators are processed (steps 2–4), post to Slack in this exact sequence:
+After all operators are processed (steps 2–4), compose the full response and post to Slack:
 
-**A. Post the parent message** to `#sre-operators` via `send_response(mode="report")`. The parent message contains ONLY the header and summary statistics — no individual operator details:
+**A. Parent message** — the first part of the response, containing ONLY the header and summary statistics. No individual operator details:
 
 > 🚀 **Weekly SRE Operator Promotion — <today's date>**
 > cc @osd-operators-saas-approver
@@ -87,13 +87,40 @@ After all operators are processed (steps 2–4), post to Slack in this exact seq
 
 Use `<!subteam^S0BLN6AN7EK>` to mention the @osd-operators-saas-approver group.
 
-**B. Post each operator as a separate threaded reply** to the parent message. Every operator gets its own individual reply — one reply per operator (see Section 5 for format templates). Post in this priority order:
+**B. Threaded replies** — after the parent summary, include per-operator details as separate threaded replies using the delimiter-based threading system. Put `---THREAD_DETAILS---` after the parent summary, then `---THREAD_BREAK---` between each operator's reply. Each operator gets its own threaded reply — one reply per operator (see Section 5 for format templates). Order operators by priority:
 1. Promoted with flags (⚠️) — most attention needed
 2. Promoted low risk (✅)
 3. Pipeline anomalies (🔍)
 4. Skipped / no changes (⏭️)
 
-> **Critical**: Never put operator details in the parent message. Never batch multiple operators into a single threaded reply. One reply = one operator.
+**Response delivery:** Compose everything — parent summary + all operator replies — as a **single** `set_response_element` call. The platform splits on the delimiters automatically. Do NOT use separate `set_response_element` calls for the parent and threads.
+
+**Validation gate:** Before calling `send_response()`, verify your response content contains `---THREAD_DETAILS---`. If the delimiter is missing, the operator details will not be posted as threaded replies — go back and add it.
+
+> **Critical**: Never put operator details in the parent message. Never batch multiple operators into a single threaded reply. One reply = one operator, separated by `---THREAD_BREAK---`.
+
+Example structure:
+
+```
+{parent summary}
+
+---THREAD_DETAILS---
+
+✅ **operator-a** — 3 new commits, low risk (boilerplate only).
+MR: <gitlab MR link>
+Changes: <GitHub compare link>
+
+---THREAD_BREAK---
+
+⚠️ **operator-b** — 5 new commits. Code changes without e2e tests.
+MR: <gitlab MR link>
+Changes: <GitHub compare link>
+_Flags: Code changes without e2e tests, RBAC modifications_
+
+---THREAD_BREAK---
+
+⏭️ **operator-c** — No new pipeline-validated changes. Skipping.
+```
 
 ### 2. For each operator — Check for pipeline-validated changes
 
