@@ -1,6 +1,15 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "schedule": ["before 6am on Monday"],
+  "gomod": {
+    "packageRules": [
+      {
+        "description": "Disable MintMaker indirect Go dependency updates",
+        "matchDepTypes": ["indirect"],
+        "enabled": false
+      }
+    ]
+  },
   "packageRules": [
     {
       "description": "Run CI for Renovate dependency updates",
@@ -11,11 +20,6 @@
       "matchManagers": ["gomod"],
       "groupName": "go dependencies",
       "groupSlug": "go-deps"
-    },
-    {
-      "matchManagers": ["gomod"],
-      "matchDepTypes": ["indirect"],
-      "enabled": false
     },
     {
       "matchManagers": ["dockerfile"],
