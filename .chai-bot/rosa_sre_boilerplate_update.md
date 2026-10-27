@@ -26,6 +26,7 @@ The following operator repos have `boilerplate/` directories and are in scope fo
 | cloud-ingress-operator | openshift/cloud-ingress-operator |
 | configuration-anomaly-detection | openshift/configuration-anomaly-detection |
 | configure-alertmanager-operator | openshift/configure-alertmanager-operator |
+| configure-goalert-operator | openshift/configure-goalert-operator |
 | deadmanssnitch-operator | openshift/deadmanssnitch-operator |
 | gcp-project-operator | openshift/gcp-project-operator |
 | managed-cluster-validating-webhooks | openshift/managed-cluster-validating-webhooks |
