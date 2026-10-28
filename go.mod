@@ -6,7 +6,7 @@ require (
 	github.com/aws/aws-sdk-go-v2 v1.47.4
 	github.com/aws/aws-sdk-go-v2/config v1.33.10
 	github.com/aws/aws-sdk-go-v2/service/cloudtrail v1.65.6
-	github.com/aws/aws-sdk-go-v2/service/ec2 v1.339.0
+	github.com/aws/aws-sdk-go-v2/service/ec2 v1.341.0
 	github.com/onsi/ginkgo/v2 v2.33.1
 	github.com/onsi/gomega v1.44.0
 	github.com/openshift-eng/openshift-tests-extension v0.0.0-20261005190041-64972ccf1568
